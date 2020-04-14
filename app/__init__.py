@@ -4,8 +4,8 @@ from flask_mail import Mail
 from flask_migrate import Migrate
 from flask_moment import Moment
 from flask_sqlalchemy import SQLAlchemy
+from config import Config
 from app.pusher import Pusher
-from config import Config, BASE_DIR
 
 # extensions
 db = SQLAlchemy()
@@ -19,11 +19,7 @@ pusher = Pusher()
 
 
 def create_app(config_class=Config):
-    app = Flask(
-        __name__,
-        static_url_path='', 
-        static_folder=f'{BASE_DIR}/static'
-    )
+    app = Flask(__name__)
     app.config.from_object(Config)
 
     db.init_app(app)

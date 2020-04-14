@@ -1,14 +1,6 @@
 from datetime import datetime
-
-from flask import (
-    make_response,
-    current_app,
-    flash,
-    redirect,
-    render_template,
-    request,
-    url_for
-)
+from flask import render_template, flash, redirect, \
+    url_for, request, current_app
 from flask_login import current_user, login_required
 from app import db
 from app.core import bp
@@ -31,7 +23,7 @@ def index():
         post = Post(body=form.post.data, author=current_user)
         db.session.add(post)
         db.session.commit()
-        flash("Your post is now live!", "success")
+        flash("Your post is now live!")
         return redirect(url_for('core.index'))
     posts = current_user.feed().paginate(page, current_app.config["POSTS_PER_PAGE"], False)
     prev_url = url_for('core.index', page=posts.prev_num)\
@@ -83,7 +75,7 @@ def edit_profile():
         current_user.username = form.username.data
         current_user.about_me = form.bio.data
         db.session.commit()
-        flash("Profile updated successfully!", "success")
+        flash("Profile updated successfully!")
         return redirect(url_for('core.user', username=current_user.username))
     elif request.method == 'GET':
         form.username.data = current_user.username
@@ -91,60 +83,70 @@ def edit_profile():
     return render_template('edit_profile.html', form=form, title="Edit Profile")
 
 
-def ajax_flash(msg_type, message, message_list):
-    message_list.append({
-        'type': msg_type,
-        'message': message
-    })
-    return message_list
-
-
 @bp.route('/follow/<username>')
 def follow(username):
-    flash_messages = []
-
-    data = {
-        'redirect': ''
-    }
-
     user = User.query.filter_by(username=username).first()
-
     if not user:
-        flash_messages = ajax_flash('info', 'User not found', flash_messages)
-    elif user == current_user:
-        flash_messages = ajax_flash('info', 'You can\'t follow yourself!', flash_messages)
-    else:
-        current_user.follow(user)
-        db.session.commit()
-        flash_messages = ajax_flash('success', f'You are following {username}', flash_messages)
-
-    data['flash_messages'] = flash_messages
-
-    r = make_response(data)
-    r.mimetype = 'application/json'
-    return r
-
+        flash("User not found")
+        return redirect(url_for("core.index"))
+    if user == current_user:
+        flash("You can't follow yourself")
+        return redirect(url_for('core.user', username=username))
+    current_user.follow(user)
+    db.session.commit()
+    flash(f"You are following {username}!")
+    return redirect(url_for("core.user", username=username))
 
 @bp.route('/unfollow/<username>')
 def unfollow(username):
-    flash_messages = [];
-
-    data = {
-        'redirect': ''
-    }
     user = User.query.filter_by(username=username).first()
     if not user:
-        flash_messages = ajax_flash('info', 'User not found', flash_messages)
-        data['redirect'] = url_for('core.index')
-    elif user == current_user:
-        flash_messages = ajax_flash('info', 'You can\'t unfollow yourself', flash_messages)
-    else:
-        current_user.unfollow(user)
-        db.session.commit()
-        flash_messages = ajax_flash('success', f'You unfollowed {username}', flash_messages)
+        flash("User not found")
+        return redirect(url_for("core.index"))
+    if user == current_user:
+        flash("You can unfollow yourself")
+        return redirect(url_for("core.user", username=username))
+    current_user.unfollow(user)
+    db.session.commit()
+    flash(f"You unfollowed {username}")
+    return redirect(url_for('core.user', username=username))
 
-    data['flash_messages'] = flash_messages
+@bp.route('/post/<post_id>/like')
+def like(post_id):
+    post = Post.query.filter_by(id=post_id).first()
+    if not post:
+        return {"error": "post not found"}
+    liked = post.like(current_user)
+    db.session.commit()
+    return {"liked": liked, "post_id": post_id, "like_count": post.likes.count()}
 
-    r = make_response(data)
-    r.mimetype = 'application/json'
-    return r
+@bp.route('/user_followed_and_followers/<username>')
+@login_required
+def user_followed_and_followers(username):
+    user = User.query.filter_by(username=username).first_or_404()
+    followed_page = request.args.get('followed_page', 1, type=int)
+    followers_page = request.args.get('followers_page', 1, type=int)
+    followed = user.followed.paginate(
+        followed_page, current_app.config["FOLLOWED_PER_PAGE"], False
+        )
+    followers = user.followers.paginate(
+        followers_page, current_app.config["FOLLOWERS_PER_PAGE"], False
+        )
+    followed_prev_url = url_for('core.user_followed_and_followers',
+        username=username, followed_page=followed.prev_num) \
+        if followed.has_prev else None
+    followed_next_url = url_for('core.user_followed_and_followers',
+        username=username, followed_page=followed.next_num) \
+        if followed.has_next else None
+    followers_prev_url = url_for('core.user_followed_and_followers',
+        username=username, followers_page=followers.prev_num) \
+        if followers.has_prev else None
+    followers_next_url = url_for('core.user_followed_and_followers',
+        username=username, followers_page=followers.next_num) \
+        if followers.has_next else None
+    return render_template('user_followed_and_followers.html', user=user,
+        followers=followers.items, followed=followed.items,
+        followed_prev_url=followed_prev_url,
+        followed_next_url=followed_next_url,
+        followers_prev_url=followers_prev_url,
+        followers_next_url=followers_next_url)
